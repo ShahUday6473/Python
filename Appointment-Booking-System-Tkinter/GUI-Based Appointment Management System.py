@@ -1,12 +1,14 @@
 import tkinter as tk
 from tkinter import messagebox, simpledialog
+import json
+import os
 
 # Class representing a single appointment slot
 class Appointment:
-    def __init__(self, hour, minute):
+    def __init__(self, hour, minute, name="", booked=False):
         self.start_time = f"{hour:02}:{minute:02}"  # Format time as hh:mm
-        self.name = ""  # Initialize with no name
-        self.booked = False  # Slot is initially not booked
+        self.name = name  # Initialize with no name or loaded from file
+        self.booked = booked  # Slot is booked based on saved data
         self.next = None  # Pointer to the next appointment
 
 # Main application class
@@ -16,7 +18,9 @@ class AppointmentApp:
         self.root.title("Appointment Booking System")  # Set window title
         self.head = None  # Head of the linked list for appointments
         self.working_hours_set = False  # Flag to check if working hours are set
+        self.file_name = "appointments.json"  # File to store appointment data
         self.create_widgets()  # Create GUI widgets
+        self.load_data()  # Load saved data if available
 
     def create_widgets(self):
         # Frame for placing widgets
@@ -48,7 +52,8 @@ class AppointmentApp:
         tk.Button(self.frame, text="Cancel Appointment", command=self.cancel_appointment).grid(row=5, column=0, pady=5)
         tk.Button(self.frame, text="Search Appointment", command=self.search_appointment).grid(row=5, column=1, pady=5)
         tk.Button(self.frame, text="Show All Appointments", command=self.display_appointments).grid(row=6, columnspan=2, pady=10)
-        tk.Button(self.frame, text="Exit", command=self.root.quit).grid(row=7, columnspan=2, pady=10)
+        tk.Button(self.frame, text="RESET DATA", command=self.reset_data).grid(row=7, column=0, pady=10)
+        tk.Button(self.frame, text="Exit", command=self.root.quit).grid(row=7, column=1, pady=10)
 
     def set_working_time(self):
         # Set working hours and create appointments
@@ -64,6 +69,7 @@ class AppointmentApp:
             self.working_hours_set = True  # Set the flag to true after setting working hours
             self.set_time_button.config(state=tk.DISABLED)  # Disable the button after setting time
             messagebox.showinfo("Success", "Working time set and appointments created.")
+            self.save_data()
         except ValueError:
             messagebox.showerror("Error", "Please enter valid numeric values.")
 
@@ -96,6 +102,54 @@ class AppointmentApp:
 
         return head
 
+    def save_data(self):
+        # Save appointment data to a file
+        appointments = []
+        temp = self.head
+        while temp:
+            appointments.append({
+                "start_time": temp.start_time,
+                "name": temp.name,
+                "booked": temp.booked
+            })
+            temp = temp.next
+        with open(self.file_name, 'w') as f:
+            json.dump(appointments, f)
+
+    def load_data(self):
+        # Load appointment data from a file if it exists
+        if not os.path.exists(self.file_name):
+            return
+
+        with open(self.file_name, 'r') as f:
+            appointments = json.load(f)
+
+        for appointment in appointments:
+            hour = int(appointment['start_time'].split(":")[0])
+            minute = int(appointment['start_time'].split(":")[1])
+
+            new_appointment = Appointment(hour, minute, appointment['name'], appointment['booked'])
+            if self.head is None:
+                self.head = new_appointment
+            else:
+                temp = self.head
+                while temp.next:
+                    temp = temp.next
+                temp.next = new_appointment
+
+        self.working_hours_set = True
+        self.set_time_button.config(state=tk.DISABLED)
+        messagebox.showinfo("Info", "Appointments loaded from file.")
+
+    def reset_data(self):
+        if os.path.exists(self.file_name):
+            os.remove(self.file_name)
+        self.head = None
+        self.working_hours_set = False
+        self.set_time_button.config(state=tk.NORMAL)
+        self.save_data()  # Save data after resetting
+        messagebox.showinfo("Success", "All data has been reset.")
+
     def find_available_slot(self):
         # Find the first available (unbooked) slot
         temp = self.head
@@ -106,7 +160,6 @@ class AppointmentApp:
         return None
 
     def book_appointment(self):
-        # Book an appointment in the first available slot
         if not self.working_hours_set:
             messagebox.showwarning("Warning", "Working hours not set. Please set working hours first.")
             return
@@ -118,6 +171,7 @@ class AppointmentApp:
                 slot.name = name
                 slot.booked = True
                 messagebox.showinfo("Success", f"Appointment booked for {slot.start_time}.")
+                self.save_data()  # Save data after booking
             else:
                 messagebox.showwarning("Warning", "No name entered.")
         else:
@@ -180,7 +234,6 @@ class AppointmentApp:
             messagebox.showwarning("No Name", "No name entered.")
 
     def cancel_appointment(self):
-        # Cancel an appointment by name
         if not self.working_hours_set:
             messagebox.showwarning("Warning", "Working hours not set. Please set working hours first.")
             return
@@ -193,6 +246,7 @@ class AppointmentApp:
                     temp.booked = False
                     temp.name = ""
                     messagebox.showinfo("Cancelled", f"Appointment for {name} has been canceled.")
+                    self.save_data()  # Save data after canceling
                     return
                 temp = temp.next
             messagebox.showinfo("No Appointment", f"No appointment found for {name}.")
